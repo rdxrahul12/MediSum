@@ -79,7 +79,7 @@ except Exception as e:
     logging.error(f"Error initializing embeddings: {e}")
     embeddings = None
 
-
+active_vectordb = None
 
 @app.route('/stream_generate', methods=['POST'])
 def stream_generate():
@@ -113,6 +113,13 @@ def stream_generate():
             return
             
         try:
+            global active_vectordb
+            if active_vectordb:
+                try:
+                    active_vectordb.delete_collection()
+                except:
+                    pass
+
             # Step 1: Document Processing
             yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] INGESTING DOCUMENT DATASHEET..."}) + "\n"
             documents = [Document(page_content=text_input)]
@@ -126,7 +133,7 @@ def stream_generate():
 
             # Step 3: Embedding
             yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] GENERATING VECTOR EMBEDDINGS (HuggingFace)..."}) + "\n"
-            vectordb = Chroma.from_documents(
+            active_vectordb = Chroma.from_documents(
                 documents=split_docs,
                 embedding=embeddings,
                 collection_name="temp_collection" # use a unique name or default
@@ -154,10 +161,9 @@ def stream_generate():
                 input_variables=["context"]
             )
 
-            
             qa_chain = RetrievalQA.from_chain_type(
                 llm=llm,
-                retriever=vectordb.as_retriever(),
+                retriever=active_vectordb.as_retriever(),
                 chain_type="stuff",
                 chain_type_kwargs={"prompt": prompt},
                 return_source_documents=False
@@ -174,8 +180,7 @@ def stream_generate():
             urgency_level = urgency_match.group(1).capitalize() if urgency_match else "Routine"
             
             # Cleanup
-            vectordb.delete_collection()
-            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] CLEANING UP VECTOR REGISTRIES..."}) + "\n"
+            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] SAVING CONTEXT FOR CHAT SESSION..."}) + "\n"
             
             # Final Result
             yield json.dumps({'type': 'result', 'content': result_text, 'urgency': urgency_level}) + "\n"
@@ -187,7 +192,72 @@ def stream_generate():
 
     return Response(stream_with_context(generate()), mimetype='application/json')
 
+chat_prompt_template = """
+You are a medical AI assistant. Answer the human's medical question using ONLY the provided document context.
+If the answer is not in the context, say "I don't have enough information from the report to answer that."
+Include a clear medical disclaimer at the very end of your response stating that you are an AI, this tool may make mistakes, and the user must consult a qualified doctor for final advice.
 
+Context: 
+{context}
+
+{question}
+"""
+
+@app.route('/stream_chat', methods=['POST'])
+def stream_chat():
+    global active_vectordb
+    
+    data = request.json
+    question = data.get('question')
+    history = data.get('history', [])
+    
+    def generate():
+        if not active_vectordb:
+            yield json.dumps({'type': 'error', 'message': "No medical report loaded. Please configure the summary protocol first."}) + "\n"
+            return
+            
+        try:
+            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] ANALYZING DOCUMENT CONTEXT..."}) + "\n"
+            
+            model_name = "qwen2.5:3b"
+            selected_url = os.getenv('OLLAMA_BASE_URL', "http://127.0.0.1:11434")
+            llm = Ollama(base_url=selected_url, model=model_name)
+            
+            formatted_history = ""
+            for msg in history:
+                role = "Human" if msg['role'] == 'user' else "AI"
+                formatted_history += f"{role}: {msg['content']}\n"
+                
+            prompt = PromptTemplate(
+                template=chat_prompt_template,
+                input_variables=["context", "question"]
+            )
+            
+            qa_chain = RetrievalQA.from_chain_type(
+                llm=llm,
+                retriever=active_vectordb.as_retriever(),
+                chain_type="stuff",
+                chain_type_kwargs={"prompt": prompt},
+            )
+            
+            custom_question = ""
+            if formatted_history:
+                custom_question = f"Previous Conversation History:\n{formatted_history}\n\n"
+            custom_question += f"Human Question: {question}\nAI Assistant:"
+            
+            response = qa_chain.invoke(custom_question)
+            result_text = response.get("result", "")
+            
+            if "disclaimer" not in result_text.lower() and "consult a" not in result_text.lower():
+                result_text += "\n\n**Disclaimer:** I am an AI medical assistant. This tool may make mistakes. Always consult a qualified medical professional for final advice."
+            
+            yield json.dumps({'type': 'result', 'content': result_text}) + "\n"
+            
+        except Exception as e:
+            logging.error(f"Error generating chat: {e}")
+            yield json.dumps({'type': 'error', 'message': f"CRITICAL FAILURE: {str(e)}"}) + "\n"
+
+    return Response(stream_with_context(generate()), mimetype='application/json')
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

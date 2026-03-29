@@ -3,6 +3,12 @@ import { marked } from 'marked';
 import './index.css';
 
 function App() {
+  const processMarkdown = (text) => {
+    if (!text) return "";
+    let processedText = text.replace(/(?:\*\*Disclaimer:\*\*|\*Disclaimer:\*|Disclaimer:|Note: Disclaimer:)\s*([\s\S]*?)(?=\n\n|$)/gi, '\n\n<div class="disclaimer-alert"><strong>DISCLAIMER:</strong> $1</div>\n\n');
+    return marked.parse(processedText);
+  };
+
   const [file, setFile] = useState(null);
   const [reportText, setReportText] = useState("");
   const [logs, setLogs] = useState([
@@ -11,9 +17,13 @@ function App() {
   const [summary, setSummary] = useState("");
   const [urgency, setUrgency] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatting, setIsChatting] = useState(false);
   const fileInputRef = useRef(null);
   const terminalRef = useRef(null);
   const resultRef = useRef(null);
+  const chatScrollRef = useRef(null);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -21,6 +31,13 @@ function App() {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [logs]);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, isChatting]);
 
   // Scroll to results when summary is populated
   useEffect(() => {
@@ -40,6 +57,7 @@ function App() {
     setLogs([]);
     setSummary("");
     setUrgency(null);
+    setChatMessages([]);
 
     const formData = new FormData();
     if (file) {
@@ -86,6 +104,56 @@ function App() {
       setLogs(prev => [...prev, { time: "00:00:00", msg: `NETWORK ERROR: ${err.message}`, type: "error" }]);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleChatSubmit = async (e) => {
+    if(e) e.preventDefault();
+    if(!chatInput.trim() || isChatting) return;
+
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setIsChatting(true);
+
+    try {
+      const currentHistory = chatMessages.map(m => ({ role: m.role, content: m.content }));
+      
+      const response = await fetch('http://127.0.0.1:5000/stream_chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: userMsg, history: currentHistory })
+      });
+
+      if (!response.body) throw new Error("No response body");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'result') {
+              setChatMessages(prev => [...prev, { role: 'ai', content: data.content }]);
+            } else if (data.type === 'error') {
+               setChatMessages(prev => [...prev, { role: 'ai', content: `[ERROR]: ${data.message}` }]);
+            }
+          } catch (e) {
+            console.error("Parse error", e);
+          }
+        }
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'ai', content: `[NETWORK ERROR]: ${err.message}` }]);
+    } finally {
+      setIsChatting(false);
     }
   };
 
@@ -157,8 +225,52 @@ function App() {
             </div>
             <div 
               className="markdown-output" 
-              dangerouslySetInnerHTML={{ __html: marked.parse(summary) }} 
+              dangerouslySetInnerHTML={{ __html: processMarkdown(summary) }} 
             />
+          </div>
+        )}
+
+        {summary && (
+          <div className="panel chat-container">
+            <div className="result-header">
+              <span className="result-title">:: MEDICAL CHAT INTERFACE ::</span>
+            </div>
+            <div className="chat-history" ref={chatScrollRef} style={{ height: '350px', overflowY: 'auto', marginBottom: '1rem', padding: '1rem', background: '#000', borderRadius: '0.5rem', border: '1px solid var(--border)', boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.5)' }}>
+              {chatMessages.length === 0 && (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '3rem', fontFamily: 'var(--font-mono)' }}>
+                  Ask questions about the diagnosed medical report.<br/>Conversation context is retained.
+                </div>
+              )}
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`chat-message ${msg.role}`} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: '1rem' }}>
+                  <div style={{ background: msg.role === 'user' ? 'rgba(6, 182, 212, 0.1)' : 'transparent', border: msg.role === 'user' ? '1px solid var(--primary)' : 'none', padding: msg.role === 'user' ? '0.75rem 1rem' : '0', borderRadius: '0.5rem', maxWidth: '85%', color: msg.role === 'user' ? 'var(--primary)' : 'var(--text-main)', fontFamily: msg.role === 'user' ? 'var(--font-mono)' : 'var(--font-ui)' }}>
+                    {msg.role === 'ai' ? (
+                       <div className="markdown-output ai-chat-content" dangerouslySetInnerHTML={{ __html: processMarkdown(msg.content) }} />
+                    ) : (
+                       <div>{msg.content}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {isChatting && (
+                <div className="chat-message ai" style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Analyzing report context...</div>
+                </div>
+              )}
+            </div>
+            <form className="chat-input-area" onSubmit={handleChatSubmit} style={{ display: 'flex', gap: '1rem' }}>
+              <input 
+                type="text" 
+                placeholder="Ask about symptoms, treatments, or disclaimers..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                disabled={isChatting}
+                style={{ flex: 1, padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-dark)', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}
+              />
+              <button className="action-btn" type="submit" disabled={isChatting || !chatInput.trim()} style={{ marginTop: 0, width: 'auto' }}>
+                SEND
+              </button>
+            </form>
           </div>
         )}
       </main>
