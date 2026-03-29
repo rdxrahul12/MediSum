@@ -5,7 +5,11 @@ import './index.css';
 function App() {
   const processMarkdown = (text) => {
     if (!text) return "";
-    let processedText = text.replace(/(?:\*\*Disclaimer:\*\*|\*Disclaimer:\*|Disclaimer:|Note: Disclaimer:)\s*([\s\S]*?)(?=\n\n|$)/gi, '\n\n<div class="disclaimer-alert"><strong>DISCLAIMER:</strong> $1</div>\n\n');
+    
+    // Remove markdown block wrappers so Marked doesn't escape our custom HTML tokens
+    let processedText = text.replace(/```[a-zA-Z]*\n?/g, '');
+
+    processedText = processedText.replace(/(?:\*\*Disclaimer:\*\*|\*Disclaimer:\*|Disclaimer:|Note: Disclaimer:)\s*([\s\S]*?)(?=\n\n|$)/gi, '\n\n<div class="disclaimer-alert"><strong>DISCLAIMER:</strong> $1</div>\n\n');
     
     // Map custom NER tokens to styled HTML spans
     processedText = processedText.replace(/\[\[MED\|(.*?)\]\]/gi, "<span class='ner-badge ner-med'>$1</span>");
