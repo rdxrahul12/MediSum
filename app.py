@@ -38,8 +38,11 @@ CORS(app) # Enable CORS for all routes
 
 
 # Define the prompt templates
-medical_prompt_template = """
-You are a medical report generator AI. Your task is to create comprehensive medical reports based on the provided text. Follow this structured format:
+medical_prompt_template = """System: You are an expert medical report generator AI. Your task is to create a structured medical report using ONLY the provided Context.
+DO NOT repeat or echo these instructions in your output. Start your response directly with the "**Urgency Level:**" header.
+
+<Instructions>
+Use this EXACT format:
 
 **Urgency Level:**
 [Classify strictly as "Routine", "Urgent", or "Critical" based on the severity of symptoms and diagnosis]
@@ -54,18 +57,22 @@ You are a medical report generator AI. Your task is to create comprehensive medi
 
 **Symptoms and Diagnosis:**
 - Symptoms: [Summarize]
-- Diagnosis: [Provide diagnosis]
+- Diagnosis: [Provide diagnosis, making sure to wrap with [[DIAG|name]]]
 
 **Treatment and Recommendations:**
-- Treatment: [List medications/therapies]
+- Treatment: [List medications wrapped with [[MED|name]] and procedures with [[PROC|name]]]
 - Recommendations: [Follow-up/Lifestyle]
 
 **Current Status:**
 - Status: [Describe condition]
 
-Summary must be structured and readable.
+Throughout your output, you MUST wrap Medication names EXACTLY as `[[MED|name]]`, Diagnosis names EXACTLY as `[[DIAG|name]]`, and Procedure names EXACTLY as `[[PROC|name]]`.
+</Instructions>
+
 Context:
 "{context}"
+
+Assistant:
 """
 
 
@@ -192,15 +199,23 @@ def stream_generate():
 
     return Response(stream_with_context(generate()), mimetype='application/json')
 
-chat_prompt_template = """
-You are a medical AI assistant. Answer the human's medical question using ONLY the provided document context.
+chat_prompt_template = """System: You are a medical AI assistant. Answer the user's medical question using ONLY the provided Context.
 If the answer is not in the context, say "I don't have enough information from the report to answer that."
+
+<Instructions>
+**Important Formatting Rules for Named Entities:**
+Throughout your response, wrap all Medication names EXACTLY as `[[MED|name]]`, Diagnosis names EXACTLY as `[[DIAG|name]]`, and Procedure names EXACTLY as `[[PROC|name]]`.
+
 Include a clear medical disclaimer at the very end of your response stating that you are an AI, this tool may make mistakes, and the user must consult a qualified doctor for final advice.
+</Instructions>
 
 Context: 
 {context}
 
+User: 
 {question}
+
+Assistant:
 """
 
 @app.route('/stream_chat', methods=['POST'])
@@ -243,7 +258,7 @@ def stream_chat():
             custom_question = ""
             if formatted_history:
                 custom_question = f"Previous Conversation History:\n{formatted_history}\n\n"
-            custom_question += f"Human Question: {question}\nAI Assistant:"
+            custom_question += f"{question}"
             
             response = qa_chain.invoke(custom_question)
             result_text = response.get("result", "")
@@ -256,6 +271,38 @@ def stream_chat():
         except Exception as e:
             logging.error(f"Error generating chat: {e}")
             yield json.dumps({'type': 'error', 'message': f"CRITICAL FAILURE: {str(e)}"}) + "\n"
+
+    return Response(stream_with_context(generate()), mimetype='application/json')
+
+translate_prompt_template = """
+You are a helpful medical translator. Explain the following medical term in 2 or 3 sentences max, using extremely simple Layman's terms that a 10-year-old could understand. Don't use complex medical jargon.
+
+Medical Term to Explain: {term}
+"""
+
+@app.route('/explain_term', methods=['POST'])
+def explain_term():
+    data = request.json
+    term = data.get('term')
+    
+    if not term:
+        return jsonify({'error': "No term provided"}), 400
+        
+    def generate():
+        try:
+            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] TRANSLATING JARGON: {term}..."}) + "\n"
+            
+            model_name = "qwen2.5:3b"
+            selected_url = os.getenv('OLLAMA_BASE_URL', "http://127.0.0.1:11434")
+            llm = Ollama(base_url=selected_url, model=model_name)
+            
+            formatted_prompt = translate_prompt_template.format(term=term)
+            result_text = llm.invoke(formatted_prompt)
+            
+            yield json.dumps({'type': 'result', 'content': result_text}) + "\n"
+        except Exception as e:
+            logging.error(f"Error explaining term: {e}")
+            yield json.dumps({'type': 'error', 'message': f"Failed to translate: {str(e)}"}) + "\n"
 
     return Response(stream_with_context(generate()), mimetype='application/json')
 
