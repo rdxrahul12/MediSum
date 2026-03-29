@@ -1,4 +1,5 @@
 Flask
+flask-cors
 python-dotenv
 pypdf
 langchain>=0.3.0

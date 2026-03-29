@@ -34,29 +34,43 @@ git clone <repository-url>
 cd Medisum
 ```
 
-### 2. Set Up Virtual Environment
+### 2. Backend Setup (Flask API)
 ```bash
 python -m venv .venv
 .venv\Scripts\activate  # Mac/Linux: source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### 3. Install Dependencies
+### 3. Frontend Setup (React/Vite)
+Open a new terminal window:
 ```bash
-pip install -r requirements.txt
+cd Medisum/frontend
+npm install
 ```
 
 
 
 ## 🚀 Running the Application
 
-1.  **Start the App**:
-    ```bash
-    python app.py
-    ```
+This project uses a decoupled architecture. You need to run both the backend and frontend concurrently.
 
-2.  **Access the Dashboard**:
-    Open your browser -> `http://127.0.0.1:5000`
+### 1. Start the Python AI Backend
+In your first terminal (with the virtual environment activated):
+```bash
+python app.py
+```
+*The backend API will run on http://127.0.0.1:5000*
 
-3.  **Monitor the Terminal**:
-    The web interface features a real-time terminal log. When you generate a summary, you will see the system connecting to your local Ollama node and processing the inference sequence.
+### 2. Start the React Frontend
+In a separate terminal:
+```bash
+cd Medisum/frontend
+npm run dev
+```
+
+### 3. Access the Dashboard
+Open your browser and navigate to the frontend URL provided by Vite (typically `http://localhost:5173`).
+
+### 4. Monitor the System
+The React web interface features a real-time terminal log. When you generate a summary, you will see the system connecting to your local Ollama node and processing the inference sequence.
 

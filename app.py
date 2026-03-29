@@ -1,4 +1,5 @@
-from flask import Flask, request, render_template, jsonify, redirect, url_for, flash, Response, stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context
+from flask_cors import CORS
 
 from pypdf import PdfReader
 import io
@@ -24,6 +25,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'default_secret')
+CORS(app) # Enable CORS for all routes
 
 
 
@@ -73,9 +75,7 @@ except Exception as e:
     logging.error(f"Error initializing embeddings: {e}")
     embeddings = None
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    return render_template('index.html')
+
 
 @app.route('/stream_generate', methods=['POST'])
 def stream_generate():
