@@ -69,6 +69,12 @@ Use this EXACT format:
 **Patient Details:**
 [Extract if available, else omit]
 
+**Timeline of Events:**
+- Extract all events in time order (oldest -> latest).
+- Include dates if available, otherwise infer the sequence.
+- Focus strictly on key events: Symptoms onset, Diagnoses, Tests and reports, Treatments and medications, and Follow-ups.
+- Keep the language simple and easy to understand (layman-friendly).
+
 **Medical History:**
 - Summary:
   - Relevant past illnesses: [Summarize]

@@ -467,3 +467,116 @@ textarea:focus {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* Animated Vertical Timeline */
+.timeline-wrapper {
+  margin: 2.5rem 0;
+  padding: 1.5rem;
+  background: var(--surface-light);
+  border-radius: 0.75rem;
+  border-left: 3px solid var(--primary);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  animation: fadeIn 0.5s ease-out;
+}
+
+.timeline-title {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+  margin-top: 0 !important;
+  margin-bottom: 2rem !important;
+  border-bottom: none !important;
+}
+
+.timeline-container {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding-left: 2.5rem;
+}
+
+/* The vertical connecting line */
+.timeline-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 9px;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--primary), rgba(6, 182, 212, 0.1));
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: 2rem;
+  opacity: 0;
+  animation: slideInLeftTimeline 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.timeline-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Timeline glowing node */
+.timeline-marker {
+  position: absolute;
+  top: 0.25rem;
+  left: -2.35rem; 
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-dark);
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 12px var(--primary-glow);
+  z-index: 2;
+  transition: all 0.3s;
+}
+
+/* Timeline card */
+.timeline-content {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  color: var(--text-main);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  position: relative;
+}
+
+.timeline-content::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-dark);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+  transition: border-color 0.3s;
+}
+
+/* Hover interactions */
+.timeline-item:hover .timeline-marker {
+  transform: scale(1.3);
+  background: var(--primary);
+  box-shadow: 0 0 20px var(--primary);
+}
+
+.timeline-item:hover .timeline-content {
+  transform: translateX(8px);
+  border-color: var(--primary);
+  box-shadow: 0 8px 15px rgba(0,0,0,0.4);
+}
+
+.timeline-item:hover .timeline-content::before {
+  border-color: var(--primary);
+}
+
+@keyframes slideInLeftTimeline {
+  from { transform: translateX(-30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
