@@ -9,3 +9,5 @@ langchain-huggingface>=0.1.0
 langchain-text-splitters>=0.3.0
 huggingface-hub>=0.36.0
 transformers
+sentence-transformers
+chromadb
