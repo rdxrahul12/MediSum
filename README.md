@@ -74,3 +74,18 @@ Open your browser and navigate to the frontend URL provided by Vite (typically `
 ### 4. Monitor the System
 The React web interface features a real-time terminal log. When you generate a summary, you will see the system connecting to your local Ollama node and processing the inference sequence.
 
+---
+
+## 👥 Contributors
+
+Meet the talented individuals who built MediSum AI:
+
+| Name | GitHub |
+| :--- | :--- |
+| **Rahul Dewasi** | [@rdxrahul12](https://github.com/rdxrahul12) |
+| **Ankit Saini** | [@AnkitS24](https://github.com/AnkitS24) |
+| **Tushar Verma** | [@Tusharvermaaa](https://github.com/Tusharvermaaa) |
+| **Himanshu Maurya** | [@himanshumaurya2329](https://github.com/himanshumaurya2329) |
+
+---
+
