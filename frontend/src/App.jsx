@@ -9,6 +9,7 @@ function App() {
     { time: "00:00:00", msg: "System Ready. Awaiting input...", type: "log" }
   ]);
   const [summary, setSummary] = useState("");
+  const [urgency, setUrgency] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const fileInputRef = useRef(null);
   const terminalRef = useRef(null);
@@ -38,6 +39,7 @@ function App() {
     setIsGenerating(true);
     setLogs([]);
     setSummary("");
+    setUrgency(null);
 
     const formData = new FormData();
     if (file) {
@@ -73,6 +75,7 @@ function App() {
               setLogs(prev => [...prev, { time: timeStr, msg: data.message, type: data.type }]);
             } else if (data.type === 'result') {
               setSummary(data.content);
+              if (data.urgency) setUrgency(data.urgency);
             }
           } catch (e) {
             console.error("Parse error", e);
@@ -145,6 +148,11 @@ function App() {
           <div className="panel result-container" ref={resultRef}>
             <div className="result-header">
               <span className="result-title">:: SYNTHESIS COMPLETE ::</span>
+              {urgency && (
+                <span className={`urgency-badge badge-${urgency.toLowerCase()}`}>
+                  {urgency.toUpperCase()}
+                </span>
+              )}
               <button className="copy-btn" onClick={copyResult}>COPY DATA</button>
             </div>
             <div 

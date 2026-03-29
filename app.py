@@ -5,6 +5,7 @@ from pypdf import PdfReader
 import io
 import os
 import json
+import re
 import time
 import urllib.request
 from urllib.parse import urlparse
@@ -39,6 +40,9 @@ CORS(app) # Enable CORS for all routes
 # Define the prompt templates
 medical_prompt_template = """
 You are a medical report generator AI. Your task is to create comprehensive medical reports based on the provided text. Follow this structured format:
+
+**Urgency Level:**
+[Classify strictly as "Routine", "Urgent", or "Critical" based on the severity of symptoms and diagnosis]
 
 **Patient Details:**
 [Extract if available, else omit]
@@ -162,14 +166,19 @@ def stream_generate():
             # Step 5: Inference
             yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] RUNNING INFERENCE SEQUENCE..."}) + "\n"
             response = qa_chain.invoke("Create a full medical summary")
-
+            
+            result_text = response.get("result", "")
+            
+            # Extract Urgency Level
+            urgency_match = re.search(r'\*\*Urgency Level:\*\*\s*(Routine|Urgent|Critical)', result_text, re.IGNORECASE)
+            urgency_level = urgency_match.group(1).capitalize() if urgency_match else "Routine"
             
             # Cleanup
             vectordb.delete_collection()
             yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] CLEANING UP VECTOR REGISTRIES..."}) + "\n"
             
             # Final Result
-            yield json.dumps({'type': 'result', 'content': response["result"]}) + "\n"
+            yield json.dumps({'type': 'result', 'content': result_text, 'urgency': urgency_level}) + "\n"
             yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] TASK COMPLETED SUCCESSFULLY."}) + "\n"
 
         except Exception as e:
