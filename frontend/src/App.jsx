@@ -6,6 +6,12 @@ function App() {
   const processMarkdown = (text) => {
     if (!text) return "";
     let processedText = text.replace(/(?:\*\*Disclaimer:\*\*|\*Disclaimer:\*|Disclaimer:|Note: Disclaimer:)\s*([\s\S]*?)(?=\n\n|$)/gi, '\n\n<div class="disclaimer-alert"><strong>DISCLAIMER:</strong> $1</div>\n\n');
+    
+    // Map custom NER tokens to styled HTML spans
+    processedText = processedText.replace(/\[\[MED\|(.*?)\]\]/gi, "<span class='ner-badge ner-med'>$1</span>");
+    processedText = processedText.replace(/\[\[DIAG\|(.*?)\]\]/gi, "<span class='ner-badge ner-diag'>$1</span>");
+    processedText = processedText.replace(/\[\[PROC\|(.*?)\]\]/gi, "<span class='ner-badge ner-proc'>$1</span>");
+
     return marked.parse(processedText);
   };
 
@@ -20,6 +26,10 @@ function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [isChatting, setIsChatting] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogTerm, setDialogTerm] = useState("");
+  const [dialogContent, setDialogContent] = useState("");
+  const [dialogLoading, setDialogLoading] = useState(false);
   const fileInputRef = useRef(null);
   const terminalRef = useRef(null);
   const resultRef = useRef(null);
@@ -157,6 +167,59 @@ function App() {
     }
   };
 
+  const handleMarkdownClick = (e) => {
+    if (e.target.classList.contains('ner-badge')) {
+      openDialog(e.target.innerText);
+    }
+  };
+
+  const openDialog = async (term) => {
+    setDialogOpen(true);
+    setDialogTerm(term);
+    setDialogContent("");
+    setDialogLoading(true);
+
+    try {
+      const response = await fetch('http://127.0.0.1:5000/explain_term', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term })
+      });
+
+      if (!response.body) throw new Error("No response body");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      let explanation = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'result') {
+              explanation = data.content;
+              setDialogContent(explanation);
+            } else if (data.type === 'error') {
+               setDialogContent(`[ERROR]: ${data.message}`);
+            }
+          } catch (e) {
+            console.error("Parse error", e);
+          }
+        }
+      }
+    } catch (err) {
+      setDialogContent(`[NETWORK ERROR]: ${err.message}`);
+    } finally {
+      setDialogLoading(false);
+    }
+  };
+
   const copyResult = () => {
     navigator.clipboard.writeText(summary).then(() => {
       alert('DATA COPIED TO CLIPBOARD');
@@ -225,6 +288,7 @@ function App() {
             </div>
             <div 
               className="markdown-output" 
+              onClick={handleMarkdownClick}
               dangerouslySetInnerHTML={{ __html: processMarkdown(summary) }} 
             />
           </div>
@@ -245,7 +309,7 @@ function App() {
                 <div key={idx} className={`chat-message ${msg.role}`} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: '1rem' }}>
                   <div style={{ background: msg.role === 'user' ? 'rgba(6, 182, 212, 0.1)' : 'transparent', border: msg.role === 'user' ? '1px solid var(--primary)' : 'none', padding: msg.role === 'user' ? '0.75rem 1rem' : '0', borderRadius: '0.5rem', maxWidth: '85%', color: msg.role === 'user' ? 'var(--primary)' : 'var(--text-main)', fontFamily: msg.role === 'user' ? 'var(--font-mono)' : 'var(--font-ui)' }}>
                     {msg.role === 'ai' ? (
-                       <div className="markdown-output ai-chat-content" dangerouslySetInnerHTML={{ __html: processMarkdown(msg.content) }} />
+                       <div className="markdown-output ai-chat-content" onClick={handleMarkdownClick} dangerouslySetInnerHTML={{ __html: processMarkdown(msg.content) }} />
                     ) : (
                        <div>{msg.content}</div>
                     )}
@@ -271,6 +335,24 @@ function App() {
                 SEND
               </button>
             </form>
+          </div>
+        )}
+
+        {dialogOpen && (
+          <div className="modal-overlay" onClick={() => setDialogOpen(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>{dialogTerm} <span style={{color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'normal', fontFamily: 'var(--font-mono)'}}>:: LAYMAN'S TERMS ::</span></h3>
+                <button className="close-btn" onClick={() => setDialogOpen(false)}>×</button>
+              </div>
+              <div className="modal-body">
+                {dialogLoading ? (
+                  <div style={{color: 'var(--text-muted)', fontFamily: 'var(--font-mono)'}}>Translating jargon...</div>
+                ) : (
+                  <div className="markdown-output" dangerouslySetInnerHTML={{ __html: marked.parse(dialogContent) }} />
+                )}
+              </div>
+            </div>
           </div>
         )}
       </main>
