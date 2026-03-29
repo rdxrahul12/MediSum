@@ -18,8 +18,27 @@ from langchain.chains import RetrievalQA
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever, ParentDocumentRetriever, ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import CrossEncoderReranker
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain.storage import InMemoryStore
 import logging
 from dotenv import load_dotenv
+from langchain_text_splitters import TextSplitter
+
+class SemanticChunkerWrapper(TextSplitter):
+    """Wrapper to make SemanticChunker pass Pydantic validation for TextSplitter."""
+    def __init__(self, chunker):
+        super().__init__(chunk_size=1, chunk_overlap=0) 
+        self.chunker = chunker
+
+    def split_text(self, text: str):
+        return self.chunker.split_text(text)
+
+    def split_documents(self, documents):
+        return self.chunker.split_documents(documents)
 import shutil
 
 load_dotenv()
@@ -81,12 +100,12 @@ Assistant:
 
 # Initialize embeddings globally to avoid reloading
 try:
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = HuggingFaceEmbeddings(model_name="NeuML/pubmedbert-base-embeddings")
 except Exception as e:
     logging.error(f"Error initializing embeddings: {e}")
     embeddings = None
 
-active_vectordb = None
+active_retriever = None
 
 @app.route('/stream_generate', methods=['POST'])
 def stream_generate():
@@ -120,30 +139,53 @@ def stream_generate():
             return
             
         try:
-            global active_vectordb
-            if active_vectordb:
-                try:
-                    active_vectordb.delete_collection()
-                except:
-                    pass
+            global active_retriever
+            if active_retriever:
+                active_retriever = None
 
             # Step 1: Document Processing
             yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] INGESTING DOCUMENT DATASHEET..."}) + "\n"
             documents = [Document(page_content=text_input)]
             time.sleep(0.3)
             
-            # Step 2: Splitting
-            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] PARTITIONING DATA STREAMS (CHUNK_SIZE=1500)..."}) + "\n"
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
-            split_docs = text_splitter.split_documents(documents)
-            time.sleep(0.3)
-
-            # Step 3: Embedding
+            # Step 2: Semantic Chunking & Parent Documents
+            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] PARTITIONING DATA STREAMS (SEMANTIC CHUNKING)..."}) + "\n"
+            parent_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+            child_splitter = SemanticChunkerWrapper(SemanticChunker(embeddings))
+            store = InMemoryStore()
+            
+            vectorstore = Chroma(
+                collection_name="temp_collection",
+                embedding_function=embeddings
+            )
+            
+            parent_retriever = ParentDocumentRetriever(
+                vectorstore=vectorstore,
+                docstore=store,
+                child_splitter=child_splitter,
+                parent_splitter=parent_splitter
+            )
+            
             yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] GENERATING VECTOR EMBEDDINGS (HuggingFace)..."}) + "\n"
-            active_vectordb = Chroma.from_documents(
-                documents=split_docs,
-                embedding=embeddings,
-                collection_name="temp_collection" # use a unique name or default
+            parent_retriever.add_documents(documents)
+            time.sleep(0.5)
+
+            # Step 3: Hybrid Search Setup
+            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] INITIALIZING BM25 HYBRID SEARCH ENSEMBLE..."}) + "\n"
+            bm25_docs = parent_splitter.split_documents(documents)
+            bm25_retriever = BM25Retriever.from_documents(bm25_docs)
+            bm25_retriever.k = 3
+            
+            ensemble_retriever = EnsembleRetriever(
+                retrievers=[bm25_retriever, parent_retriever], weights=[0.5, 0.5]
+            )
+
+            # Step 3.5: Post-Retrieval Re-ranking
+            yield json.dumps({'type': 'log', 'message': f"[{datetime.now().strftime('%H:%M:%S')}] PREPARING MEDCPT RE-RANKER..."}) + "\n"
+            cross_encoder = HuggingFaceCrossEncoder(model_name="ncbi/MedCPT-Cross-Encoder")
+            compressor = CrossEncoderReranker(model=cross_encoder, top_n=3)
+            active_retriever = ContextualCompressionRetriever(
+                base_compressor=compressor, base_retriever=ensemble_retriever
             )
             time.sleep(0.5)
 
@@ -170,7 +212,7 @@ def stream_generate():
 
             qa_chain = RetrievalQA.from_chain_type(
                 llm=llm,
-                retriever=active_vectordb.as_retriever(),
+                retriever=active_retriever,
                 chain_type="stuff",
                 chain_type_kwargs={"prompt": prompt},
                 return_source_documents=False
@@ -220,14 +262,14 @@ Assistant:
 
 @app.route('/stream_chat', methods=['POST'])
 def stream_chat():
-    global active_vectordb
+    global active_retriever
     
     data = request.json
     question = data.get('question')
     history = data.get('history', [])
     
     def generate():
-        if not active_vectordb:
+        if not active_retriever:
             yield json.dumps({'type': 'error', 'message': "No medical report loaded. Please configure the summary protocol first."}) + "\n"
             return
             
@@ -250,7 +292,7 @@ def stream_chat():
             
             qa_chain = RetrievalQA.from_chain_type(
                 llm=llm,
-                retriever=active_vectordb.as_retriever(),
+                retriever=active_retriever,
                 chain_type="stuff",
                 chain_type_kwargs={"prompt": prompt},
             )
