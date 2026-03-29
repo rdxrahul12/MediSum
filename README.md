@@ -6,7 +6,7 @@
 
 ## 🚀 Key Features
 
-- **🛡️ Secure & Local**: Uses local LLM (**Qwen2.5-3B**) via Ollama. No cloud dependencies.
+- **🛡️ Secure & Local**: Uses local LLM (**Qwen2.5-3B**) via Ollama. No cloud dependencies, no API keys, and no login required.
 - **⚡ Local Inference**: Fast responses using your machine's local hardware.
 - **🎨 Futuristic UI**: A "Pitch Black" Cyber-aesthetic theme with neon glow effects, animations, and real-time terminal logs.
 - **📄 Multi-Format Support**: Ingests PDF reports and raw text streams.
@@ -45,18 +45,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
----
 
-## ⚙️ Configuration
-
-Create a `.env` file in the root directory:
-
-```env
-SECRET_KEY=your-super-secure-key
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-```
-
----
 
 ## 🚀 Running the Application
 
