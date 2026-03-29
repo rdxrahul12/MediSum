@@ -257,6 +257,28 @@ textarea:focus {
   border-color: var(--text-main);
 }
 
+/* Disclaimer Alert */
+.disclaimer-alert {
+  color: #ef4444; /* red-500 */
+  background: rgba(239, 68, 68, 0.1);
+  border-left: 4px solid #ef4444;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.1);
+}
+
+.disclaimer-alert strong {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: #fca5a5; /* red-300 */
+  margin-right: 0.5rem;
+}
+
 /* Urgency Badges */
 .urgency-badge {
   padding: 0.25rem 0.75rem;
